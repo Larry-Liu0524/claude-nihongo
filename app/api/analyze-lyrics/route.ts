@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 export interface LyricAnalysisResult {
   annotated_lyrics: string;
@@ -47,33 +45,19 @@ ${lyrics}
 
 請確保只回傳JSON格式，不要有其他文字。`;
 
-    const message = await client.messages.create({
-      model: 'claude-opus-4-5',
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
 
-    const textContent = message.content.find((c) => c.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
-      throw new Error('No text response from Claude');
-    }
-
-    // Parse JSON from response, handle potential markdown code blocks
-    let jsonText = textContent.text.trim();
+    let jsonText = text;
     if (jsonText.startsWith('```json')) {
       jsonText = jsonText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
     } else if (jsonText.startsWith('```')) {
       jsonText = jsonText.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
 
-    const result: LyricAnalysisResult = JSON.parse(jsonText);
-
-    return NextResponse.json(result);
+    const analysisResult: LyricAnalysisResult = JSON.parse(jsonText);
+    return NextResponse.json(analysisResult);
   } catch (error) {
     console.error('Error analyzing lyrics:', error);
     if (error instanceof SyntaxError) {
